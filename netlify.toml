@@ -32,7 +32,7 @@
   package = "@netlify/plugin-lighthouse"
 
 [context.production]
-  command = "npm install --prefix netlify/functions && npm run build"
+  command = "npm install --prefix netlify/functions"
 
 [context.deploy-preview]
-  command = "npm install --prefix netlify/functions && npm run build"
+  command = "npm install --prefix netlify/functions"
