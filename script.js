@@ -1,14 +1,22 @@
 // Global state management
 class AppState {
     constructor() {
-        this.tasks = this.loadFromStorage('tasks', []);
-        this.pomodoroSessions = this.loadFromStorage('pomodoroSessions', []);
+        this.userId = null;
+        this.tasks = [];
+        this.pomodoroSessions = [];
         this.currentDate = new Date();
         this.editingTaskId = null;
         this.pomodoroTimer = null;
         this.isPomodoroRunning = false;
         this.isBreakTime = false;
         this.currentTime = 25 * 60; // 25 minutes in seconds
+    }
+
+    // Set the current user ID and load their data
+    setUser(userId) {
+        this.userId = userId;
+        this.tasks = this.loadFromStorage(`tasks_${this.userId}`, []);
+        this.pomodoroSessions = this.loadFromStorage(`pomodoroSessions_${this.userId}`, []);
     }
 
     loadFromStorage(key, defaultValue) {
@@ -23,7 +31,12 @@ class AppState {
 
     saveToStorage(key, data) {
         try {
-            localStorage.setItem(key, JSON.stringify(data));
+            // Only save if we have a user ID
+            if (this.userId) {
+                localStorage.setItem(`${key}_${this.userId}`, JSON.stringify(data));
+            } else {
+                console.warn('Cannot save data: No user ID set');
+            }
         } catch (error) {
             console.error('Error saving to localStorage:', error);
         }
@@ -611,21 +624,100 @@ class ProgressTracker {
             this.chart.update();
         }
     }
-}
 
 // Initialize all managers
 let taskManager, calendar, pomodoroTimer, progressTracker;
 
-document.addEventListener('DOMContentLoaded', () => {
+// Initialize the application
+document.addEventListener('DOMContentLoaded', async () => {
+    // Check authentication status
+    try {
+        // Check if we have a valid session
+        const response = await fetch('/.netlify/functions/auth/me');
+        
+        if (response.ok) {
+            const data = await response.json();
+            if (data.user) {
+                // User is authenticated
+                document.body.classList.add('authenticated');
+                
+                // Initialize app with user data
+                app.setUser(data.user.id);
+                initializeApp();
+                
+                // Update UI with user info
+                const userElements = document.querySelectorAll('[data-user]');
+                userElements.forEach(el => {
+                    const attr = el.getAttribute('data-user');
+                    if (attr === 'name' && data.user.name) {
+                        el.textContent = data.user.name;
+                    } else if (attr === 'email' && data.user.email) {
+                        el.textContent = data.user.email;
+                    }
+                });
+                
+                // Set up logout button
+                const logoutBtn = document.getElementById('logoutBtn');
+                if (logoutBtn) {
+                    logoutBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        auth.logout();
+                    });
+                }
+                
+                return;
+            }
+        }
+        
+        // If we get here, user is not authenticated
+        document.body.classList.remove('authenticated');
+        
+    } catch (error) {
+        console.error('Error checking authentication status:', error);
+        document.body.classList.remove('authenticated');
+    }
+    
+    // If not on login/register/forgot-password pages, redirect to login
+    if (!['/login.html', '/register.html', '/forgot-password.html', '/reset-password.html'].includes(window.location.pathname)) {
+        window.location.href = '/login.html';
+    }
+});
+
+// Initialize the main application
+function initializeApp() {
     taskManager = new TaskManager();
     calendar = new CalendarManager();
     pomodoroTimer = new PomodoroTimer();
     progressTracker = new ProgressTracker();
-    
-    // Update progress stats and chart on page load
-    progressTracker.updateStats();
-    progressTracker.updateChart();
-});
+
+    // Initialize the calendar with the current date
+    calendar.render();
+
+    // Load any saved settings (user-specific)
+    if (app.userId) {
+        const savedWorkTime = localStorage.getItem(`workTime_${app.userId}`);
+        const savedBreakTime = localStorage.getItem(`breakTime_${app.userId}`);
+
+        if (savedWorkTime) document.getElementById('workTime').value = savedWorkTime;
+        if (savedBreakTime) document.getElementById('breakTime').value = savedBreakTime;
+    }
+
+    // Update the progress chart when tasks or pomodoros change
+    const updateProgress = () => {
+        if (progressTracker) {
+            progressTracker.updateStats();
+            progressTracker.updateChart();
+        }
+    };
+
+    // Listen for custom events to update the progress chart
+    document.addEventListener('taskAdded', updateProgress);
+    document.addEventListener('taskCompleted', updateProgress);
+    document.addEventListener('pomodoroCompleted', updateProgress);
+
+    // Initial progress update
+    updateProgress();
+}
 
 // Keyboard shortcuts
 document.addEventListener('keydown', (e) => {

@@ -1,0 +1,38 @@
+[build]
+  command = "npm install"
+  publish = "."
+  functions = "netlify/functions"
+
+[dev]
+  framework = "#custom"
+  targetPort = 8888
+  port = 8888
+  publish = "."
+  autoLaunch = true
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["pg"]
+
+[build.environment]
+  NODE_VERSION = "18"
+  NPM_FLAGS = "--prefix=netlify/functions"
+
+[[plugins]]
+  package = "@netlify/plugin-lighthouse"
+
+[context.production]
+  command = "npm install --prefix netlify/functions && npm run build"
+
+[context.deploy-preview]
+  command = "npm install --prefix netlify/functions && npm run build"
